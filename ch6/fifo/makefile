@@ -1,12 +1,12 @@
+# Makefile for Verilator simulation
+VERILATOR = verilator
+VERILATOR_FLAGS = -Wall --cc --trace -Iobj_dir
+
 # Source and testbench files
 TOP_MODULE = versat_updown_counter
 VERILOG_SRC = src/$(TOP_MODULE).sv
 TESTBENCH_SRC = src/tb_versat_updown_counter.cxx
 SIM_EXEC = obj_dir/V$(TOP_MODULE)
-
-# Makefile for Verilator simulation
-VERILATOR = verilator
-VERILATOR_FLAGS = -Wall --cc --trace -Iobj_dir -CFLAGS "-DWAVEFORM_FILE=$(TOP_MODULE).vcd"
 
 all: $(SIM_EXEC)
 
@@ -19,9 +19,10 @@ $(SIM_EXEC): $(VERILOG_SRC) $(TESTBENCH_SRC)
 # 生成 vcd 文件, 并用 dwfv 运行 cargo install dwfv
 run: $(SIM_EXEC)
 	@./$(SIM_EXEC)
-	dwfv $(TOP_MODULE).vcd
+	dwfv waveform.vcd
 	
+
 clean:
-	rm -rf obj_dir $(TOP_MODULE).vcd
+	rm -rf obj_dir waveform.vcd
 
 .PHONY: all run clean

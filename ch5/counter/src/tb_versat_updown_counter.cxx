@@ -8,6 +8,9 @@
 
 #include "Vversat_updown_counter.h"
 
+#define STRINGIFY(x) #x
+#define TOSTRING(x) STRINGIFY(x)
+
 #define MAX_SIM_TIME 300
 #define VERIF_START_TIME 7
 vluint64_t sim_time = 0;
@@ -235,7 +238,7 @@ int main(int argc, char** argv, char** env)
     Verilated::traceEverOn(true);
     VerilatedVcdC* m_trace = new VerilatedVcdC;
     dut->trace(m_trace, 5);
-    m_trace->open("waveform.vcd");
+    m_trace->open(TOSTRING(WAVEFORM_FILE));
 
     CntInTx* tx;
 
