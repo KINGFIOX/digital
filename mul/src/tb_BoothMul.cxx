@@ -1,4 +1,5 @@
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <iostream>
 #include <memory>
@@ -136,14 +137,15 @@ public:
         in_q.pop_front();
 
         if (tx->valid) {
-            // Calculate the expected result
+            // 这里主要的一个问题就是: in.x != out.x
+            // 我们这里其实相当于是锁上了，计算是需要时间的
             uint16_t expected = tx->_x * tx->_y;
 
             // Compare the expected result with the actual result
             if (tx->z != expected) {
-                std::cout << "Error in AluScb: expected " << expected << ", got " << tx->z << std::endl;
+                printf("failed: expected: %04X, got: %04X\n", expected, tx->z);
             } else {
-                std::cout << "Success: expected " << expected << ", got " << tx->z << std::endl;
+                printf("success: %04X\n", tx->z);
             }
         }
 

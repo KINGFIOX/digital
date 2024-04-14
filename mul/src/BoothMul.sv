@@ -17,6 +17,8 @@ module BoothMul #(
   localparam CACULATE = 3'b010;
   localparam FINISH = 3'b100;
 
+  wire rst_n = ~rst;
+
   /// state 有三个状态，one-hot 状态编码
   reg [2:0] state;
   reg [2:0] next_state;
@@ -27,8 +29,8 @@ module BoothMul #(
 
 
   /// 防止中间变卦
-  always_ff @(posedge clk or posedge rst) begin
-    if (rst) begin
+  always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
       _x <= 0;
       _y <= 0;
     end else begin
@@ -46,8 +48,8 @@ module BoothMul #(
   end
 
   /// 状态迁移
-  always_ff @(posedge clk or posedge rst) begin
-    if (rst) begin
+  always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
       state <= IDLE;
     end else begin
       state <= next_state;
@@ -82,8 +84,8 @@ module BoothMul #(
   end
 
   /// 输出方程
-  always_ff @(posedge clk or posedge rst) begin
-    if (rst) begin
+  always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
       cnt <= 0;
       q_reg <= 0;
       z <= 0;
