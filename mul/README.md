@@ -2,7 +2,7 @@
 
 ## dependency
 
-- ![verilator](https://verilator.org/)
+- [verilator](https://verilator.org/)
   - win11 : `winget install verilatro`
   - opensuse : `zypper install verilator-devel` ( 但是本人推荐编译安装 )
 
