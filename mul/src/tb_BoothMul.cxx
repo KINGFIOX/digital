@@ -6,7 +6,7 @@
 #include <verilated.h>
 #include <verilated_vcd_c.h>
 
-#include "Vversat_updown_counter.h"
+#include "VBoothMul.h"
 
 #define STRINGIFY(x) #x
 #define TOSTRING(x) STRINGIFY(x)
@@ -23,37 +23,34 @@ vluint64_t posedge_cnt = 0;
 
 class BoothInTx {
 public:
-    uint8_t new_cntr_preset_value;
-    bool new_cntr_preset;
-    bool enable_cnt_up;
-    bool enable_cnt_dn;
-    bool pause_counting;
+    bool start;
+    uint8_t x;
+    uint8_t y;
 
     BoothInTx() = default;
-    BoothInTx(bool _new_cntr_preset,
-        uint8_t _new_cntr_preset_value,
-        bool _enable_cnt_up,
-        bool _enable_cnt_dn,
-        bool _pause_counting)
-        : new_cntr_preset(_new_cntr_preset)
-        , new_cntr_preset_value(_new_cntr_preset_value)
-        , enable_cnt_up(_enable_cnt_up)
-        , enable_cnt_dn(_enable_cnt_dn)
-        , pause_counting(_pause_counting)
+    BoothInTx(bool _start,
+        uint8_t _x,
+        uint8_t _y)
+        : start(_start)
+        , x(_x)
+        , y(_y)
     {
     }
 };
 
+/**
+ * @brief 发生器
+ *
+ * @return BoothInTx*
+ */
 BoothInTx* rndBoothInTx()
 {
     // 20% chance of generating a transaction
     if (rand() % 5 == 0) {
         BoothInTx* tx = new BoothInTx(
             rand() % 2,
-            rand() % 256,
-            rand() % 2,
-            rand() % 2,
-            rand() % 2);
+            rand() % 128,
+            rand() % 128);
         return tx;
     } else {
         return nullptr;
@@ -64,28 +61,21 @@ BoothInTx* rndBoothInTx()
 // 这个 driver 也就是做了一个事情：给 dut 的端口赋值
 class BoothInDrv {
 private:
-    Vversat_updown_counter* dut;
+    VBoothMul* dut;
 
 public:
-    BoothInDrv(Vversat_updown_counter* dut) { this->dut = dut; }
+    BoothInDrv(VBoothMul* dut) { this->dut = dut; }
 
     void drive(BoothInTx* tx)
     {
         // 初始化都是 0
-        dut->enable_cnt_dn = 0;
-        dut->enable_cnt_up = 0;
-        dut->pause_counting = 0;
-        dut->new_cntr_preset = 0;
+        dut->start = 0;
 
         // Don't drive anything if a transaction item doesn't exist
         if (tx != nullptr) {
-            dut->new_cntr_preset = tx->new_cntr_preset;
-            dut->new_cntr_preset_value = tx->new_cntr_preset_value;
-            dut->enable_cnt_up = tx->enable_cnt_up;
-            dut->enable_cnt_dn = tx->enable_cnt_dn;
-            dut->pause_counting = tx->pause_counting;
-            // Release the memory by deleting the tx item
-            // after it has been consumed
+            dut->start = tx->start;
+            dut->x = tx->x;
+            dut->y = tx->y;
             delete tx;
         }
     }
@@ -98,16 +88,21 @@ public:
  */
 class BoothOutTx {
 public:
-    bool ctr_expired;
-    BoothOutTx(bool _ctr_expired)
-        : ctr_expired(_ctr_expired)
+    uint16_t z;
+    bool valid;
+    uint8_t _x;
+    uint8_t _y;
+    BoothOutTx(uint16_t _z, bool _valid, uint8_t __x, uint8_t __y)
+        : z(_z)
+        , valid(_valid)
+        , _x(__x)
+        , _y(__y)
     {
     }
 };
 
-// CNT scoreboard
 /**
- * @brief scoreboard 负责计算
+ * @brief
  *
  */
 class BoothScb {
@@ -131,20 +126,25 @@ public:
     // output
     void writeOut(BoothOutTx* tx)
     {
-        // We should never get any data from the output interface
-        // before an input gets driven to the input interface
         // 如果 dut 不输出，那么肯定 writeOut 一定不会被调用
         if (in_q.empty()) {
             std::cout << "Fatal Error in AluScb: empty AluInTx queue" << std::endl;
             exit(1);
         }
 
-        // Grab the transaction item from the front of the input item queue
         BoothInTx* in = in_q.front();
         in_q.pop_front();
 
-        if (tx->ctr_expired) {
-            std::cout << "cnt expired!" << std::endl;
+        if (tx->valid) {
+            // Calculate the expected result
+            uint16_t expected = tx->_x * tx->_y;
+
+            // Compare the expected result with the actual result
+            if (tx->z != expected) {
+                std::cout << "Error in AluScb: expected " << expected << ", got " << tx->z << std::endl;
+            } else {
+                std::cout << "Success: expected " << expected << ", got " << tx->z << std::endl;
+            }
         }
 
         // As the transaction items were allocated on the heap, it's important
@@ -154,7 +154,6 @@ public:
     }
 };
 
-// ALU input interface monitor
 /**
  * @brief 暗中观察，input 接口上发生的变化，就是这个上面的变化生命周期要比
  * transaction gen 长
@@ -162,11 +161,11 @@ public:
  */
 class BoothInMon {
 private:
-    Vversat_updown_counter* dut;
+    VBoothMul* dut;
     BoothScb* scb;
 
 public:
-    BoothInMon(Vversat_updown_counter* dut, BoothScb* scb)
+    BoothInMon(VBoothMul* dut, BoothScb* scb)
     {
         this->dut = dut;
         this->scb = scb;
@@ -175,28 +174,24 @@ public:
     void monitor()
     {
         BoothInTx* tx = new BoothInTx(
-            dut->new_cntr_preset,
-            dut->new_cntr_preset_value,
-            dut->enable_cnt_up,
-            dut->enable_cnt_dn,
-            dut->pause_counting);
-
+            dut->start,
+            dut->x,
+            dut->y);
         scb->writeIn(tx);
     }
 };
 
-// ALU output interface monitor
 /**
  * @brief
  *
  */
 class BoothOutMon {
 private:
-    Vversat_updown_counter* dut;
+    VBoothMul* dut;
     BoothScb* scb;
 
 public:
-    BoothOutMon(Vversat_updown_counter* dut, BoothScb* scb)
+    BoothOutMon(VBoothMul* dut, BoothScb* scb)
     {
         this->dut = dut;
         this->scb = scb;
@@ -204,27 +199,21 @@ public:
 
     void monitor()
     {
-
-        // If there is valid data at the output interface,
-        // create a new AluOutTx transaction item and populate
-        // it with result observed at the interface pins
-        BoothOutTx* tx = new BoothOutTx(dut->ctr_expired);
+        BoothOutTx* tx = new BoothOutTx(dut->z, dut->valid, dut->_x, dut->_y);
 
         // then pass the transaction item to the scoreboard
         scb->writeOut(tx);
     }
 };
 
-void dut_reset(Vversat_updown_counter* dut, vluint64_t& sim_time)
+void dut_reset(VBoothMul* dut, vluint64_t& sim_time)
 {
-    dut->resetb = 1;
+    dut->rst = 0;
     if (sim_time >= 3 && sim_time < 6) {
-        dut->resetb = 1;
-        dut->new_cntr_preset = 0;
-        dut->new_cntr_preset_value = 0;
-        dut->enable_cnt_up = 0;
-        dut->enable_cnt_dn = 0;
-        dut->pause_counting = 0;
+        dut->rst = 1;
+        dut->x = 0;
+        dut->y = 0;
+        dut->start = 0;
     }
 }
 
@@ -232,7 +221,7 @@ int main(int argc, char** argv, char** env)
 {
     srand(time(0));
     Verilated::commandArgs(argc, argv);
-    Vversat_updown_counter* dut = new Vversat_updown_counter;
+    VBoothMul* dut = new VBoothMul;
 
     // 注册 vcd
     Verilated::traceEverOn(true);
